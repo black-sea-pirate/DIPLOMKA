@@ -1,26 +1,54 @@
-// src/router/index.js
+/* ===========================================================================
+   src/router/index.js
+
+   Маршрутизация приложения построена на Vue Router 4
+   (history-режим, SPA-навигация без перезагрузок).
+
+   👉 Ключевые идеи, которые должен понять trainee:
+
+   1)  «Ленивые» импорты (dynamic import) — компонент грузится,
+       только когда пользователь реально переходит по маршруту.
+       Это уменьшает размер начального бандла.
+
+   2)  Layout-маршруты:  путь «/» рендерит MainLayout,
+       а все teacher/student-страницы вкладываются внутрь как children.
+       Благодаря этому Navbar + Sidebar рисуются один раз.
+
+   3)  Global beforeEach guard — универсальная «охрана».
+       • пускает Public-страницы без проверки
+       • если нет токена → перенаправляет на /login
+       • если роль не совпадает с meta.role → перебрасывает на «домашнюю»
+         для текущей роли.
+
+   После подключения настоящего backend код роутера НЕ придётся менять —
+   guard уже опирается на user.isAuth и user.role, которые будут
+   устанавливаться через /auth/login.
+=========================================================================== */
+
 import { createRouter, createWebHistory } from "vue-router";
-import { useUserStore } from "../stores/user";
+import { useUserStore } from "@/stores/user";
 
-/* ---------- ленивые импорты ---------- */
-const Login = () => import("../pages/Login.vue");
-const Register = () => import("../pages/Register.vue");
+/* ─────────────── ЛЕНИВЫЕ ИМПОРТЫ (dynamic import) ───────────────
+   Синтаксис () => import('...') заставляет Vite создать отдельный
+   chunk *.js, который подгрузится по требованию.                                 */
+const Login = () => import("@/pages/Login.vue");
+const Register = () => import("@/pages/Register.vue");
 
-const MainLayout = () => import("../layouts/MainLayout.vue");
+const MainLayout = () => import("@/layouts/MainLayout.vue");
 
-/* teacher */
-const TeacherDashboard = () => import("../pages/teacher/Dashboard.vue");
-const TeacherTests = () => import("../pages/teacher/Tests.vue");
-const TeacherAnalytics = () => import("../pages/teacher/Analytics.vue");
+/* teacher pages */
+const TeacherDashboard = () => import("@/pages/teacher/Dashboard.vue");
+const TeacherTests = () => import("@/pages/teacher/Tests.vue");
+const TeacherAnalytics = () => import("@/pages/teacher/Analytics.vue");
 
-/* student */
-const StudentDashboard = () => import("../pages/student/Dashboard.vue");
-const StudentTestSession = () => import("../pages/student/TestSession.vue");
-const StudentResults = () => import("../pages/student/Results.vue");
+/* student pages */
+const StudentDashboard = () => import("@/pages/student/Dashboard.vue");
+const StudentTestSession = () => import("@/pages/student/TestSession.vue");
+const StudentResults = () => import("@/pages/student/Results.vue");
 
-/* ---------- маршруты ---------- */
+/* ─────────────── ОПИСАНИЕ МАРШРУТОВ ─────────────── */
 const routes = [
-  /* public */
+  /* PUBLIC -------------------------------------------------------------- */
   { path: "/login", name: "Login", component: Login, meta: { public: true } },
   {
     path: "/register",
@@ -29,12 +57,12 @@ const routes = [
     meta: { public: true },
   },
 
-  /* protected layout */
+  /* PROTECTED (под MainLayout) ------------------------------------------ */
   {
     path: "/",
-    component: MainLayout,
+    component: MainLayout, // Navbar + Sidebar
     children: [
-      /* TEACHER ---------------------------------------------------------- */
+      /* ---------- TEACHER -------- */
       {
         path: "teacher",
         children: [
@@ -58,7 +86,7 @@ const routes = [
           },
         ],
       },
-      /* STUDENT ---------------------------------------------------------- */
+      /* ---------- STUDENT -------- */
       {
         path: "student",
         children: [
@@ -85,32 +113,41 @@ const routes = [
     ],
   },
 
-  /* fallback */
+  /* fallback: любой неизвестный адрес → /login */
   { path: "/:pathMatch(.*)*", redirect: "/login" },
 ];
 
-/* ---------- роутер ---------- */
+/* ─────────────── СОЗДАНИЕ РОУТЕРА ─────────────── */
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(), // clean URL (/teacher) без #hash
   routes,
 });
 
-/* ---------- global guard ---------- */
+/* ─────────────── ГЛОБАЛЬНЫЙ GUARD ───────────────
+   Вызывается перед каждым переходом                         */
 router.beforeEach((to) => {
   const user = useUserStore();
 
-  // публичные маршруты — свободный доступ
+  /* 1. Public-маршруты доступны всегда */
   if (to.meta.public) return true;
 
-  // если нет токена → /login
+  /* 2. Нет токена?  → отправляем на /login  */
   if (!user.isAuth) return "/login";
 
-  // проверка роли
+  /* 3. Проверяем роль маршрута */
   if (to.meta.role && to.meta.role !== user.role) {
+    // Пользователь залогинен, но пытается открыть «чужую» страницу
     return user.role === "teacher" ? "/teacher" : "/student";
   }
 
+  /* 4. Всё ок, переход разрешён */
   return true;
 });
 
 export default router;
+/* Что trainee изменит при реальном backend
+guard остаётся тот же — флаг user.isAuth и user.role будут устанавливаться
+после успешного запроса /auth/login.
+
+Если добавятся новые страницы, достаточно дописать ленивый импорт и объект
+маршрута, копируя существующий шаблон. */
